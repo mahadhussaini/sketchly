@@ -131,15 +131,16 @@ Return ONLY the component code without markdown formatting or explanations.`
         dependencies: Array.isArray(dependencies) ? dependencies : ['react'],
         componentName
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle OpenAI API errors specifically
-      if (error?.status === 401) {
+      const apiError = error as { status?: number }
+      if (apiError.status === 401) {
         throw new Error('OpenAI API key is invalid or expired. Please check your OPENAI_API_KEY in .env.local and get a new key from https://platform.openai.com/api-keys if needed.')
       }
-      if (error?.status === 429) {
+      if (apiError.status === 429) {
         throw new Error('OpenAI API rate limit exceeded. Please wait a moment and try again.')
       }
-      if (error?.status === 500) {
+      if (apiError.status === 500) {
         throw new Error('OpenAI service is temporarily unavailable. Please try again later.')
       }
       // Re-throw other errors
@@ -258,15 +259,16 @@ Focus on identifying common UI patterns and providing actionable suggestions for
           confidence: 0.3
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle OpenAI API errors specifically
-      if (error?.status === 401) {
+      const apiError = error as { status?: number }
+      if (apiError.status === 401) {
         throw new Error('OpenAI API key is invalid or expired. Please check your OPENAI_API_KEY in .env.local and get a new key from https://platform.openai.com/api-keys if needed.')
       }
-      if (error?.status === 429) {
+      if (apiError.status === 429) {
         throw new Error('OpenAI API rate limit exceeded. Please wait a moment and try again.')
       }
-      if (error?.status === 500) {
+      if (apiError.status === 500) {
         throw new Error('OpenAI service is temporarily unavailable. Please try again later.')
       }
       // Re-throw other errors

@@ -7,11 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-export interface APIResponse<T = any> {
+export interface APIResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
-  details?: any
+  details?: unknown
 }
 
 /**
@@ -35,7 +35,7 @@ export function createSuccessResponse<T>(
  */
 export function createErrorResponse(
   error: string,
-  details?: any,
+  details?: unknown,
   status: number = 500
 ): NextResponse<APIResponse> {
   return NextResponse.json(
@@ -78,16 +78,19 @@ export function handleAPIError(error: unknown, context: string): NextResponse<AP
  * Validate request body
  */
 export function validateRequestBody<T>(
-  body: any,
+  body: unknown,
   requiredFields: (keyof T)[]
 ): { isValid: boolean; error?: string } {
   if (!body || typeof body !== 'object') {
     return { isValid: false, error: 'Request body is required' }
   }
 
+  const bodyRecord = body as Record<string, unknown>
+
   for (const field of requiredFields) {
-    if (!(field in body) || body[field] === undefined || body[field] === null) {
-      return { isValid: false, error: `Missing required field: ${String(field)}` }
+    const fieldName = String(field)
+    if (!(fieldName in bodyRecord) || bodyRecord[fieldName] === undefined || bodyRecord[fieldName] === null) {
+      return { isValid: false, error: `Missing required field: ${fieldName}` }
     }
   }
 
@@ -124,10 +127,10 @@ export function validateFileUpload(
 /**
  * Create a standardized API route wrapper
  */
-export function createAPIRoute<TRequest = any, TResponse = any>(
-  handler: (request: NextRequest, context?: any) => Promise<NextResponse<APIResponse<TResponse>>>
+export function createAPIRoute(
+  handler: (request: NextRequest, context?: unknown) => Promise<NextResponse<APIResponse>>
 ) {
-  return async (request: NextRequest, context?: any): Promise<NextResponse<APIResponse<TResponse>>> => {
+  return async (request: NextRequest, context?: unknown): Promise<NextResponse<APIResponse>> => {
     try {
       return await handler(request, context)
     } catch (error) {

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { getOpenAIConfigStatus } from '@/lib/openai'
 import { createSuccessResponse, handleAPIError } from '@/lib/server/api-utils'
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     console.log('[Config Status] Starting configuration status check...')
 
