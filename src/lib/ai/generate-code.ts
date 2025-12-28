@@ -25,7 +25,7 @@ export async function generateCodeFromAnalysis(
       jsx: result.jsx,
       css: result.css,
       componentName: result.componentName,
-      dependencies: result.dependencies,
+      dependencies: Array.isArray(result.dependencies) ? result.dependencies : ['react'],
       generatedAt: new Date(result.generatedAt),
       version: result.version
     }

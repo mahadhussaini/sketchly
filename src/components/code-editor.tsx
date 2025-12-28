@@ -365,7 +365,7 @@ export function CodeEditor() {
                 <span className="hidden sm:inline">•</span>
                 <span>v{generatedCode.version}</span>
                 <span className="hidden sm:inline">•</span>
-                <span>{generatedCode.dependencies.length} dependencies</span>
+                <span>{generatedCode.dependencies?.length || 0} dependencies</span>
               </>
             )}
           </div>
