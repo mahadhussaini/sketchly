@@ -15,7 +15,10 @@ export async function analyzeSketch(file: File): Promise<AIAnalysisResult> {
       throw new Error(errorData.error || 'Failed to analyze sketch')
     }
 
-    const analysisResult = await response.json() as AIAnalysisResult
+    const responseData = await response.json()
+    
+    // Extract data from wrapped response { success: true, data: {...} }
+    const analysisResult = (responseData.data || responseData) as AIAnalysisResult
     
     // Validate the result structure
     if (!analysisResult.detectedElements || !Array.isArray(analysisResult.detectedElements)) {

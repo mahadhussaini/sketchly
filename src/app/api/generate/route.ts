@@ -28,6 +28,18 @@ export async function POST(request: NextRequest) {
     // Generate component using the server-side service
     const result = await openAIService.generateComponent(analysis, { componentName })
 
+    // Validate the generated code is not empty
+    if (!result.jsx || result.jsx.trim().length < 50) {
+      console.error('Generated code is too short or empty:', result.jsx?.substring(0, 100))
+      return createErrorResponse('Code generation failed: Generated code is incomplete. Please try again.', null, 500)
+    }
+
+    // Ensure the code has proper structure
+    if (!result.jsx.includes('export default') && !result.jsx.includes('export default function')) {
+      console.error('Generated code missing export statement')
+      return createErrorResponse('Code generation failed: Generated code is missing required structure. Please try again.', null, 500)
+    }
+
     const response = {
       jsx: result.jsx,
       css: '', // CSS is handled by Tailwind

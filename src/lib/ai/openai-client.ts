@@ -25,7 +25,18 @@ export async function getOpenAIConfigStatus(): Promise<OpenAIConfig> {
     if (!response.ok) {
       throw new Error('Failed to fetch config status')
     }
-    return await response.json()
+    const result = await response.json()
+    // Handle wrapped API response { success: true, data: {...} }
+    const status = result.data || result
+    return {
+      isConfigured: status.isConfigured || false,
+      hasApiKey: status.hasApiKey || false,
+      keyFormatValid: status.keyFormatValid || false,
+      isPlaceholder: status.isPlaceholder || false,
+      generationModel: status.generationModel || 'gpt-4o',
+      analysisModel: status.analysisModel || 'gpt-4o',
+      error: status.error
+    }
   } catch (error) {
     console.error('Error fetching OpenAI config status:', error)
     return {
@@ -33,8 +44,8 @@ export async function getOpenAIConfigStatus(): Promise<OpenAIConfig> {
       hasApiKey: false,
       keyFormatValid: false,
       isPlaceholder: true,
-      generationModel: 'gpt-4.1-nano',
-      analysisModel: 'gpt-4.1-nano',
+      generationModel: 'gpt-4o',
+      analysisModel: 'gpt-4o',
       error: error instanceof Error ? error.message : 'Unknown error'
     }
   }

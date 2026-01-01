@@ -59,7 +59,7 @@ export class OpenAIService {
     const {
       componentName = 'GeneratedComponent',
       temperature = 0.7,
-      maxTokens = 3000
+      maxTokens = 4000  // Increased for more complete code
     } = options
 
     const elementsDescription = analysis.detectedElements
@@ -74,7 +74,10 @@ export class OpenAIService {
           role: "system",
           content: `You are an expert React developer who creates clean, responsive components using Tailwind CSS and modern React patterns.
 
-Guidelines:
+CRITICAL REQUIREMENTS:
+- ALWAYS generate a COMPLETE, FULLY FUNCTIONAL React component
+- NEVER return only imports or partial code
+- The component MUST include: imports, the component function definition, and a complete return statement with JSX
 - Use functional components with TypeScript
 - Apply Tailwind classes for styling
 - Ensure responsive design (mobile-first)
@@ -83,11 +86,13 @@ Guidelines:
 - Add hover and focus states for interactive elements
 - Use Tailwind's utility classes for spacing, colors, and layouts
 - Include proper imports for any icons (use Lucide React)
-- Make the component production-ready and well-structured`
+- Make the component production-ready and well-structured
+- The component MUST be complete and runnable
+- NEVER truncate or cut off the code - always provide the full component`
         },
         {
           role: "user",
-          content: `Generate a React component based on this UI analysis:
+          content: `Generate a COMPLETE React component based on this UI analysis. The component MUST be fully functional with all necessary code.
 
 Component Name: ${componentName}
 
@@ -98,39 +103,116 @@ Extracted Text: ${analysis.extractedText?.join(', ') || 'None'}
 
 Suggestions: ${analysis.suggestions?.join(', ') || 'None'}
 
-Please generate:
-1. A complete React component with TypeScript
-2. Use Tailwind CSS for all styling
-3. Make it responsive and accessible
-4. Include any necessary imports
-5. Use modern React patterns (hooks, functional components)
+IMPORTANT: Generate a COMPLETE React component that includes:
+1. All necessary import statements (React, icons, etc.)
+2. A complete TypeScript functional component definition named "${componentName}"
+3. A full return statement with complete JSX markup using Tailwind CSS
+4. Proper component structure that can be rendered immediately
 
-Return ONLY the component code without markdown formatting or explanations.`
+Example structure:
+import React from 'react';
+// other imports...
+
+export default function ${componentName}() {
+  return (
+    <div className="...">
+      {/* Complete JSX content */}
+    </div>
+  );
+}
+
+Return ONLY the complete component code without markdown code blocks, without explanations, without comments outside the code. Start directly with the import statements. Make sure the code is COMPLETE and does not end abruptly.`
         }
       ],
       max_tokens: maxTokens,
-      temperature: temperature
+      temperature: temperature,
+      stream: false  // Ensure we get the full response
     })
 
-    const content = response.choices[0]?.message?.content
+    const choice = response.choices[0]
+    const content = choice?.message?.content
+    const finishReason = choice?.finish_reason
+    
     if (!content) {
       throw new Error('No code generation result received')
     }
+    
+    // Check if the response was truncated
+    if (finishReason === 'length') {
+      console.warn('OpenAI response was truncated due to token limit. Consider increasing max_tokens.')
+    }
 
     // Clean up the response to extract just the code
-    const generatedJSX = content
-      .replace(/```tsx?/g, '')
-      .replace(/```/g, '')
+    let generatedJSX = content
+      // Remove markdown code blocks
+      .replace(/```tsx?\n?/g, '')
+      .replace(/```\n?/g, '')
+      // Remove any leading/trailing whitespace and explanatory text
+      .replace(/^[^i]*?(?=import|export|function|const)/i, '')
       .trim()
+
+    // More strict validation that we have a complete component
+    // Check for basic component structure
+    const hasImports = /import\s+/.test(generatedJSX)
+    const hasComponentFunction = new RegExp(`(function|const|export\\s+default\\s+function)\\s+${componentName}`, 'i').test(generatedJSX) || 
+                                  /export\s+default\s+function/.test(generatedJSX) ||
+                                  /const\s+\w+\s*=.*=>/.test(generatedJSX)
+    const hasReturn = /return\s*\(/.test(generatedJSX)
+    const hasJSX = /<[A-Za-z]/.test(generatedJSX)
+    const hasExportDefault = /export\s+default/.test(generatedJSX)
+    const codeLength = generatedJSX.length
+    
+    // Log validation details for debugging
+    console.log('Code validation:', {
+      hasImports,
+      hasComponentFunction,
+      hasReturn,
+      hasJSX,
+      hasExportDefault,
+      codeLength,
+      preview: generatedJSX.substring(0, 200)
+    })
+
+    // If the code is incomplete, ALWAYS use fallback
+    // Check multiple conditions: must have function, return, JSX, and minimum length
+    const isComplete = hasComponentFunction && hasReturn && hasJSX && codeLength > 200 && hasExportDefault
+    
+    if (!isComplete) {
+      console.warn('Generated code is incomplete or invalid, using fallback component', {
+        reason: !hasComponentFunction ? 'missing component function' :
+                !hasReturn ? 'missing return statement' :
+                !hasJSX ? 'missing JSX' :
+                codeLength <= 200 ? `code too short (${codeLength} chars)` :
+                !hasExportDefault ? 'missing export default' : 'unknown'
+      })
+      
+      // Always use fallback when code is incomplete
+      const extractedText = analysis.extractedText?.slice(0, 5) || []
+      generatedJSX = this.createFallbackComponent(componentName, analysis, extractedText)
+      
+      // If we had some imports, try to preserve them
+      if (hasImports && content.length > 50) {
+        const imports = content.match(/import\s+[^;]+;/g)
+        if (imports && imports.length > 0) {
+          // Replace imports in fallback if they exist
+          const fallbackImports = generatedJSX.match(/import\s+[^;]+;/g)?.[0] || ''
+          if (fallbackImports) {
+            generatedJSX = generatedJSX.replace(/^import\s+[^;]+;/, imports[0])
+          } else {
+            generatedJSX = `${imports[0]}\n${generatedJSX}`
+          }
+        }
+      }
+    }
 
     // Extract dependencies from imports
     const dependencies = this.extractDependencies(generatedJSX)
 
-      return {
-        jsx: generatedJSX,
-        dependencies: Array.isArray(dependencies) ? dependencies : ['react'],
-        componentName
-      }
+    return {
+      jsx: generatedJSX,
+      dependencies: Array.isArray(dependencies) ? dependencies : ['react'],
+      componentName
+    }
     } catch (error: unknown) {
       // Handle OpenAI API errors specifically
       const apiError = error as { status?: number }
@@ -274,6 +356,81 @@ Focus on identifying common UI patterns and providing actionable suggestions for
       // Re-throw other errors
       throw error
     }
+  }
+
+  /**
+   * Create a fallback component when generated code is incomplete
+   */
+  private createFallbackComponent(componentName: string, analysis: AIAnalysisResult, extractedText: string[]): string {
+    const textElements = extractedText.length > 0 ? extractedText : analysis.extractedText?.slice(0, 3) || []
+    const elements = analysis.detectedElements?.slice(0, 5) || []
+    
+    // Ensure we have at least some content
+    if (textElements.length === 0 && elements.length === 0) {
+      textElements.push('Generated Component', 'This component was created from your sketch', 'Please customize as needed')
+    }
+    
+    const elementsJSX = textElements.map((text, index) => {
+      // Clean and escape text safely - remove template literal syntax and special chars
+      const cleanText = (text || '').replace(/[{}<>]/g, '').replace(/\${/g, '').replace(/`/g, '').substring(0, 100).trim()
+      const displayText = cleanText || (index === 0 ? 'Component' : `Item ${index + 1}`)
+      
+      if (index === 0) {
+        return `        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">${displayText}</h1>`
+      } else if (text.toLowerCase().includes('button') || text.toLowerCase().includes('click')) {
+        return `        <button className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500">
+          ${displayText}
+        </button>`
+      } else if (text.toLowerCase().includes('input') || text.toLowerCase().includes('search')) {
+        return `        <input 
+          type="text" 
+          placeholder="${displayText.substring(0, 50)}" 
+          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+        />`
+      } else {
+        return `        <p className="text-gray-600 dark:text-gray-300">${displayText}</p>`
+      }
+    }).join('\n')
+    
+    const uiElementsJSX = elements.length > 0 ? elements.map((el) => {
+      const cleanText = (el.text || '').replace(/[{}<>]/g, '').replace(/\${/g, '').substring(0, 100).trim()
+      
+      if (el.type === 'button') {
+        return `        <button className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+          ${cleanText || 'Button'}
+        </button>`
+      } else if (el.type === 'input') {
+        return `        <input 
+          type="text" 
+          placeholder="${cleanText.substring(0, 50) || 'Input'}" 
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+        />`
+      } else if (el.type === 'card') {
+        return `        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-2">${cleanText || 'Card Title'}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-300">Card content</p>
+        </div>`
+      }
+      return ''
+    }).filter(Boolean).join('\n') : ''
+    
+    return `import React from 'react';
+
+export default function ${componentName}() {
+  return (
+    <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+      <div className="space-y-6">
+${elementsJSX}
+${uiElementsJSX}
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            This component was generated from your sketch. Please customize as needed.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}`
   }
 
   /**

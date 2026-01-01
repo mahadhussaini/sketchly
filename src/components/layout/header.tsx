@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { useSketchStore } from '@/store/sketch-store'
 import { Icon } from '@/components/icon-wrapper'
+import { getOpenAIConfigStatus } from '@/lib/ai/openai-client'
+import { Zap, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface HeaderProps {
   onMenuClick?: () => void
@@ -14,8 +16,18 @@ interface HeaderProps {
 
 export function Header({ onMenuClick, onProjectClick, onKeyboardClick }: HeaderProps) {
   const { theme, setTheme } = useTheme()
-  const { generatedCode, currentSketch } = useSketchStore()
+  const { generatedCode, currentSketch, isAnalyzing, isGenerating } = useSketchStore()
   const [showSettings, setShowSettings] = useState(false)
+  const [aiStatus, setAiStatus] = useState<{ isConfigured: boolean; loading: boolean }>({ isConfigured: false, loading: true })
+
+  useEffect(() => {
+    // Check AI configuration status
+    getOpenAIConfigStatus().then(status => {
+      setAiStatus({ isConfigured: status.isConfigured || false, loading: false })
+    }).catch(() => {
+      setAiStatus({ isConfigured: false, loading: false })
+    })
+  }, [])
 
   const handleExport = () => {
     if (!generatedCode) return
@@ -81,6 +93,39 @@ export function Header({ onMenuClick, onProjectClick, onKeyboardClick }: HeaderP
 
         {/* Actions */}
         <div className="flex items-center space-x-1 sm:space-x-2">
+          {/* AI Status Indicator */}
+          <div className="hidden md:flex items-center space-x-2 px-2 py-1 rounded-md bg-muted/50">
+            {aiStatus.loading ? (
+              <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
+            ) : aiStatus.isConfigured ? (
+              <>
+                <CheckCircle2 className="w-3 h-3 text-green-500" />
+                <span className="text-xs text-muted-foreground">AI Ready</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3 h-3 text-amber-500" />
+                <span className="text-xs text-amber-600 dark:text-amber-400">AI Not Configured</span>
+              </>
+            )}
+            {(isAnalyzing || isGenerating) && (
+              <Zap className="w-3 h-3 text-primary animate-pulse ml-1" />
+            )}
+          </div>
+
+          {/* AI Status - Mobile */}
+          <div className="md:hidden">
+            {(isAnalyzing || isGenerating) ? (
+              <div className="w-8 h-8 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-primary animate-pulse" />
+              </div>
+            ) : !aiStatus.isConfigured && !aiStatus.loading ? (
+              <div className="w-8 h-8 flex items-center justify-center" title="AI not configured">
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+              </div>
+            ) : null}
+          </div>
+
           {/* Theme Toggle */}
           <Button
             variant="ghost"

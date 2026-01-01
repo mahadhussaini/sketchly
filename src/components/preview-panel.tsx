@@ -36,7 +36,17 @@ export function PreviewPanel() {
 
   // Memoize the component preview to avoid unnecessary re-renders
   const previewComponent = useMemo(() => {
-    if (!generatedCode?.jsx) return null
+    if (!generatedCode?.jsx || !generatedCode.jsx.trim()) {
+      return (
+        <div className="flex items-center justify-center min-h-[200px] p-8">
+          <div className="text-center">
+            <Code className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No Code to Preview</h3>
+            <p className="text-muted-foreground">Code generation completed but no JSX was generated</p>
+          </div>
+        </div>
+      )
+    }
     
     return (
       <ComponentPreview
@@ -44,7 +54,7 @@ export function PreviewPanel() {
         componentName={generatedCode.componentName}
       />
     )
-  }, [generatedCode])
+  }, [generatedCode?.jsx, generatedCode?.componentName])
 
   if (!currentSketch) {
     return (
@@ -243,8 +253,16 @@ export function PreviewPanel() {
           <div className="flex items-center space-x-2 sm:space-x-4 text-xs">
             <span>Version {generatedCode.version}</span>
             <span className="hidden sm:inline">•</span>
-            <span className="hidden sm:inline">Last updated: {generatedCode.generatedAt.toLocaleTimeString()}</span>
-            <span className="sm:hidden">Updated {generatedCode.generatedAt.toLocaleTimeString()}</span>
+            <span className="hidden sm:inline">
+              Last updated: {generatedCode.generatedAt instanceof Date && !isNaN(generatedCode.generatedAt.getTime())
+                ? generatedCode.generatedAt.toLocaleTimeString()
+                : 'Just now'}
+            </span>
+            <span className="sm:hidden">
+              Updated {generatedCode.generatedAt instanceof Date && !isNaN(generatedCode.generatedAt.getTime())
+                ? generatedCode.generatedAt.toLocaleTimeString()
+                : 'Just now'}
+            </span>
           </div>
         </div>
       </div>

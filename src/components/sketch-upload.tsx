@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { useSketchStore } from '@/store/sketch-store'
 import { generateId, formatFileSize, isValidImageFile, createImagePreview } from '@/lib/utils'
 import { analyzeSketch } from '@/lib/ai/analyze-sketch'
+import { generateCodeFromAnalysis } from '@/lib/ai/generate-code'
 import toast from 'react-hot-toast'
 
 interface SketchUploadProps {
@@ -29,7 +30,7 @@ export function SketchUpload({ onUploadComplete }: SketchUploadProps) {
     status: 'uploading' | 'analyzing' | 'completed' | 'error'
   }>>([])
   
-  const { addSketch, setAnalyzing, updateSketchAnalysis } = useSketchStore()
+  const { addSketch, setAnalyzing, updateSketchAnalysis, setGeneratedCode, setGenerating } = useSketchStore()
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(isValidImageFile)
@@ -79,21 +80,67 @@ export function SketchUpload({ onUploadComplete }: SketchUploadProps) {
 
         // Analyze with AI
         const analysis = await analyzeSketch(uploadedFile.file)
-        
+
         // Update with analysis results
         updateSketchAnalysis(sketch.id, analysis)
 
-        // Update file status
-        setUploadedFiles(prev => 
-          prev.map(f => 
-            f.id === uploadedFile.id 
+        // Update file status to completed
+        setUploadedFiles(prev =>
+          prev.map(f =>
+            f.id === uploadedFile.id
               ? { ...f, status: 'completed' }
               : f
           )
         )
 
         toast.success(`Analysis complete for ${uploadedFile.file.name}`)
-        
+
+        // Generate code from analysis
+        try {
+          setGenerating(true)
+
+          // Update status to show code generation
+          setUploadedFiles(prev =>
+            prev.map(f =>
+              f.id === uploadedFile.id
+                ? { ...f, status: 'analyzing' } // Reuse analyzing status for code generation
+                : f
+            )
+          )
+
+          const componentName = sketch.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '') || 'GeneratedComponent'
+          const generatedCode = await generateCodeFromAnalysis(analysis, componentName)
+
+          // Set the generated code in the store
+          setGeneratedCode(generatedCode)
+
+          // Update status to completed
+          setUploadedFiles(prev =>
+            prev.map(f =>
+              f.id === uploadedFile.id
+                ? { ...f, status: 'completed' }
+                : f
+            )
+          )
+
+          toast.success(`Code generated successfully for ${uploadedFile.file.name}`)
+
+        } catch (genError) {
+          console.error('Error generating code:', genError)
+
+          setUploadedFiles(prev =>
+            prev.map(f =>
+              f.id === uploadedFile.id
+                ? { ...f, status: 'error' }
+                : f
+            )
+          )
+
+          toast.error(`Code generation failed for ${uploadedFile.file.name}`)
+        } finally {
+          setGenerating(false)
+        }
+
         if (onUploadComplete) {
           onUploadComplete()
         }
@@ -114,7 +161,7 @@ export function SketchUpload({ onUploadComplete }: SketchUploadProps) {
         setAnalyzing(false)
       }
     }
-  }, [addSketch, setAnalyzing, updateSketchAnalysis, onUploadComplete])
+  }, [addSketch, setAnalyzing, updateSketchAnalysis, setGeneratedCode, setGenerating, onUploadComplete])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -150,11 +197,11 @@ export function SketchUpload({ onUploadComplete }: SketchUploadProps) {
       case 'uploading':
         return 'Uploading...'
       case 'analyzing':
-        return 'Analyzing with AI...'
+        return 'Processing...'
       case 'completed':
-        return 'Analysis complete'
+        return 'Complete'
       case 'error':
-        return 'Analysis failed'
+        return 'Failed'
       default:
         return ''
     }

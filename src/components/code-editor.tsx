@@ -68,11 +68,17 @@ export function CodeEditor() {
 
   // Initialize editor with generated code
   useEffect(() => {
-    if (generatedCode?.jsx) {
-      setEditorValue(generatedCode.jsx)
-      setIsModified(false)
+    if (generatedCode?.jsx && generatedCode.jsx.trim()) {
+      // Only update if the code is different to avoid unnecessary re-renders
+      if (editorValue !== generatedCode.jsx) {
+        setEditorValue(generatedCode.jsx)
+        setIsModified(false)
+      }
+    } else if (generatedCode && (!generatedCode.jsx || !generatedCode.jsx.trim())) {
+      // If generatedCode exists but jsx is empty, show empty editor
+      setEditorValue('')
     }
-  }, [generatedCode])
+  }, [generatedCode?.jsx])
 
   // Generate initial code if we have a sketch but no code
   useEffect(() => {
@@ -212,34 +218,38 @@ export function CodeEditor() {
           )}
         </div>
 
-        <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
-          {/* AI Generate/Regenerate - Hidden on small screens */}
+        <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end flex-wrap gap-2">
+          {/* AI Generate/Regenerate - Now visible on all screens */}
           <Button
             variant="outline"
             size="sm"
             onClick={handleGenerateCode}
-            disabled={isGenerating}
-            className="hidden sm:flex"
+            disabled={isGenerating || !currentSketch?.analysis}
+            className="flex"
+            title={!currentSketch?.analysis ? 'Upload a sketch first to generate code' : generatedCode ? 'Regenerate code with AI' : 'Generate code with AI'}
           >
             {isGenerating ? (
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Wand2 className="w-4 h-4 mr-2" />
             )}
-            {generatedCode ? 'Regenerate' : 'Generate Code'}
+            <span className="hidden sm:inline">{generatedCode ? 'Regenerate' : 'Generate Code'}</span>
+            <span className="sm:hidden">{generatedCode ? 'Regen' : 'Generate'}</span>
           </Button>
 
-          {/* AI Enhance - Hidden on small screens */}
+          {/* AI Enhance - Now visible on all screens */}
           {generatedCode && (
             <Button
               variant="outline"
               size="sm"
               onClick={handleAIEnhance}
-              disabled={isGenerating}
-              className="hidden sm:flex"
+              disabled={isGenerating || !currentSketch?.analysis}
+              className="flex"
+              title="Enhance code with AI improvements"
             >
               <Zap className="w-4 h-4 mr-2" />
-              AI Enhance
+              <span className="hidden sm:inline">AI Enhance</span>
+              <span className="sm:hidden">Enhance</span>
             </Button>
           )}
 
@@ -372,7 +382,9 @@ export function CodeEditor() {
 
           {generatedCode && (
             <div className="text-xs">
-              Generated: {generatedCode.generatedAt.toLocaleTimeString()}
+              Generated: {generatedCode.generatedAt instanceof Date && !isNaN(generatedCode.generatedAt.getTime()) 
+                ? generatedCode.generatedAt.toLocaleTimeString() 
+                : 'Just now'}
             </div>
           )}
         </div>

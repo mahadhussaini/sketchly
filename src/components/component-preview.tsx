@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import * as React from 'react'
 import { AlertCircle } from 'lucide-react'
 
@@ -9,41 +9,106 @@ interface ComponentPreviewProps {
   componentName: string
 }
 
+declare global {
+  interface Window {
+    Babel: {
+      transform: (code: string, options: any) => { code: string }
+    }
+  }
+}
+
 export function ComponentPreview({ code, componentName }: ComponentPreviewProps) {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [babelLoaded, setBabelLoaded] = useState(false)
+
+  // Load Babel standalone for JSX transformation
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (!window.Babel) {
+      const script = document.createElement('script')
+      script.src = 'https://unpkg.com/@babel/standalone/babel.min.js'
+      script.async = true
+      script.onload = () => {
+        if (window.Babel) {
+          setBabelLoaded(true)
+          setIsLoading(false)
+        }
+      }
+      script.onerror = () => {
+        setError('Failed to load Babel transpiler. Please check your internet connection.')
+        setIsLoading(false)
+      }
+      document.head.appendChild(script)
+    } else {
+      setBabelLoaded(true)
+      setIsLoading(false)
+    }
+  }, [])
 
   // Memoized component rendering
   const RenderedComponent = useMemo(() => {
     try {
+      if (!code || !code.trim()) {
+        throw new Error('No code provided to preview')
+      }
+
+      if (!babelLoaded || !window.Babel) {
+        return null // Still loading Babel
+      }
+
       setError(null)
-      setIsLoading(true)
 
       // Clean up the code for safe evaluation
-      const cleanCode = code
-        .replace(/^import.*$/gm, '') // Remove import statements
+      let cleanCode = code
+        .replace(/^import\s+.*?from\s+['"].*?['"];?\s*$/gm, '') // Remove import statements  
         .replace(/^export\s+(default\s+)?/gm, '') // Remove export statements
         .trim()
 
-      // Create a safe function that returns the component
-      const componentFunction = new Function(
-        'React',
-        'useState',
-        'useEffect',
-        'useMemo',
-        'useCallback',
-        `
-        try {
-          ${cleanCode}
-          return ${componentName};
-        } catch (error) {
-          throw new Error('Component compilation failed: ' + error.message);
-        }
-        `
-      )
+      // Ensure we have a valid component structure
+      if (!cleanCode.includes('function') && !cleanCode.includes('const') && !cleanCode.includes('=>')) {
+        throw new Error('Invalid component structure: component must be a function or const declaration')
+      }
 
-      // Execute the function with React hooks
-      const Component = componentFunction(
+      // Try to extract component name from code if not provided
+      let actualComponentName = componentName
+      const functionMatch = cleanCode.match(/(?:function|const|var|let)\s+(\w+)\s*[=\(]/)
+      if (functionMatch) {
+        actualComponentName = functionMatch[1]
+      }
+
+      // Transpile JSX to JavaScript using Babel
+      let transpiledCode: string
+      try {
+        const result = window.Babel.transform(cleanCode, {
+          presets: [['react', { runtime: 'automatic' }]],
+          filename: `${componentName}.tsx`
+        })
+        transpiledCode = result.code
+      } catch (transpileError) {
+        console.error('Babel transform error:', transpileError)
+        throw new Error(`JSX transpilation failed: ${transpileError instanceof Error ? transpileError.message : 'Unknown error'}`)
+      }
+
+      // Wrap the transpiled code to return the component
+      // Add React import and ensure the component is exported
+      const wrappedCode = `
+        const React = arguments[0];
+        const useState = arguments[1];
+        const useEffect = arguments[2];
+        const useMemo = arguments[3];
+        const useCallback = arguments[4];
+        
+        ${transpiledCode}
+        
+        return typeof ${actualComponentName} !== 'undefined' ? ${actualComponentName} : null;
+      `
+
+      // Create and execute the function
+      const componentFactory = new Function('React', 'useState', 'useEffect', 'useMemo', 'useCallback', wrappedCode)
+      
+      const Component = componentFactory(
         React,
         React.useState,
         React.useEffect,
@@ -51,21 +116,36 @@ export function ComponentPreview({ code, componentName }: ComponentPreviewProps)
         React.useCallback
       )
 
-      setIsLoading(false)
-      
+      if (!Component || typeof Component !== 'function') {
+        throw new Error(`Component "${actualComponentName}" not found or is not a function`)
+      }
+
       return Component
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      setIsLoading(false)
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
+      console.error('Component preview error:', errorMessage, err, { code: code.substring(0, 200) })
+      setError(errorMessage)
       return null
     }
-  }, [code, componentName])
+  }, [code, componentName, babelLoaded])
 
-  if (isLoading) {
+  // Update loading state based on Babel and component
+  useEffect(() => {
+    if (babelLoaded && RenderedComponent) {
+      setIsLoading(false)
+    } else if (!babelLoaded) {
+      setIsLoading(true)
+    }
+  }, [babelLoaded, RenderedComponent])
+
+  if (isLoading && !babelLoaded) {
     return (
       <div className="flex items-center justify-center min-h-[200px] p-8">
-        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full"></div>
+        <div className="text-center">
+          <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+          <p className="text-sm text-muted-foreground">Loading preview engine...</p>
+        </div>
       </div>
     )
   }
@@ -78,7 +158,7 @@ export function ComponentPreview({ code, componentName }: ComponentPreviewProps)
           <h3 className="text-lg font-medium text-red-600 dark:text-red-400 mb-2">
             Preview Error
           </h3>
-          <p className="text-sm text-red-500 dark:text-red-300 mb-4">
+          <p className="text-sm text-red-500 dark:text-red-300 mb-4 break-words">
             {error}
           </p>
           <div className="text-xs text-muted-foreground">
@@ -94,6 +174,11 @@ export function ComponentPreview({ code, componentName }: ComponentPreviewProps)
       <div className="flex items-center justify-center min-h-[200px] p-8">
         <div className="text-center">
           <div className="text-muted-foreground">No component to preview</div>
+          {isLoading && (
+            <div className="mt-2">
+              <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+            </div>
+          )}
         </div>
       </div>
     )

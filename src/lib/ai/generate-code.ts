@@ -19,15 +19,22 @@ export async function generateCodeFromAnalysis(
       throw new Error(errorData.error || 'Failed to generate code')
     }
 
-    const result = await response.json()
+    const responseData = await response.json()
+    
+    // Extract data from wrapped response { success: true, data: {...} }
+    const result = responseData.data || responseData
+    
+    if (!result.jsx) {
+      throw new Error('Invalid response: missing jsx field')
+    }
     
     return {
-      jsx: result.jsx,
-      css: result.css,
-      componentName: result.componentName,
+      jsx: result.jsx || '',
+      css: result.css || '',
+      componentName: result.componentName || componentName,
       dependencies: Array.isArray(result.dependencies) ? result.dependencies : ['react'],
-      generatedAt: new Date(result.generatedAt),
-      version: result.version
+      generatedAt: result.generatedAt ? new Date(result.generatedAt) : new Date(),
+      version: result.version || 1
     }
 
   } catch (error) {
