@@ -9,10 +9,16 @@ interface ComponentPreviewProps {
   componentName: string
 }
 
+interface BabelOptions {
+  presets?: unknown[]
+  plugins?: unknown[]
+  filename?: string
+}
+
 declare global {
   interface Window {
     Babel: {
-      transform: (code: string, options: any) => { code: string }
+      transform: (code: string, options: BabelOptions) => { code: string }
     }
   }
 }
@@ -61,7 +67,7 @@ export function ComponentPreview({ code, componentName }: ComponentPreviewProps)
       setError(null)
 
       // Clean up the code for safe evaluation
-      let cleanCode = code
+      const cleanCode = code
         .replace(/^import\s+.*?from\s+['"].*?['"];?\s*$/gm, '') // Remove import statements  
         .replace(/^export\s+(default\s+)?/gm, '') // Remove export statements
         .trim()

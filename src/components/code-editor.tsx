@@ -78,6 +78,7 @@ export function CodeEditor() {
       // If generatedCode exists but jsx is empty, show empty editor
       setEditorValue('')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedCode?.jsx])
 
   // Generate initial code if we have a sketch but no code
